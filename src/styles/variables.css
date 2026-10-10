@@ -1,0 +1,75 @@
+/* Last Modified: 2026-10-10 (v2.0.0.0) */
+/* Design tokens: theming through CSS variables. */
+:root {
+  --felt-1: #0f6b46;
+  --felt-2: #0a4a31;
+  --felt-3: #06311f;
+  --rail: #3a2414;
+  --rail-hi: #6b4426;
+  --gold: #f4c95d;
+  --gold-deep: #c8962a;
+  --ink: #f7f5ee;
+  --ink-dim: #b9c9bf;
+  --panel: rgba(8, 28, 20, 0.72);
+  --panel-border: rgba(244, 201, 93, 0.28);
+  --danger: #d6453d;
+  --call: #1f9d63;
+  --raise: #e2a21e;
+  --accent: #2f7de1;
+  --radius: 16px;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --font: 'Trebuchet MS', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+
+  /* Card sizes: oversized for TV screens, scaling down to 320px. */
+  --card-board: clamp(46px, 8.5vw, 150px);
+  --card-hand: clamp(84px, 13vw, 190px);
+  --card-mini: clamp(30px, 3.6vw, 64px);
+  --chip-size: clamp(1.9rem, 3vw, 2.8rem);
+  --gap: clamp(0.35rem, 1vw, 1rem);
+}
+
+@media (max-width: 720px) {
+  :root {
+    --card-board: calc((100vw - 3rem) / 5.6);
+    --card-hand: clamp(72px, 24vw, 130px);
+    --card-mini: clamp(26px, 8vw, 44px);
+    --chip-size: 1.7rem;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100dvh;
+  font-family: var(--font);
+  color: var(--ink);
+  background: radial-gradient(ellipse at 50% 0%, #11553b 0%, var(--felt-3) 55%, #021a10 100%) fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
