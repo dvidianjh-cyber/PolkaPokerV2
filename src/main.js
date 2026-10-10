@@ -1,4 +1,4 @@
-// Last Modified: 2026-10-10 (v2.0.0.0)
+// Last Modified: 2026-10-10 (v2.0.0.2)
 import { renderLanding } from './ui/landing.js';
 import { TableView } from './ui/table.js';
 import { HostSession } from './net/host.js';
@@ -7,7 +7,7 @@ import { validateConfig } from './engine/blinds.js';
 import { MSG } from './net/messages.js';
 import { loadProfile, saveProfile, loadPrefs, savePrefs } from './storage/profile.js';
 
-export const APP_VERSION = '2.0.0.0';
+export const APP_VERSION = '2.0.0.2';
 
 const root = document.getElementById('app');
 let session = null;
@@ -24,7 +24,7 @@ function showLanding(notice = '') {
   if (session) session.close();
   table = null;
   session = null;
-  landing = renderLanding(root, { profile: loadProfile(), notice, onCreate: handleCreate, onJoin: handleJoin });
+  landing = renderLanding(root, { notice, onCreate: handleCreate, onJoin: handleJoin });
 }
 
 /**
@@ -72,15 +72,14 @@ function handlePrefsChange(next) {
  * Create a table as host.
  * @param {{name: string, avatar: string, config: object}} data Form data.
  */
-async function handleCreate({ name, avatar, config }) {
+async function handleCreate({ config }) {
   const checked = validateConfig(config);
   if (!checked.ok) {
     landing.setError(checked.error);
     return;
   }
-  saveProfile({ playerName: name, avatarUrl: avatar });
   landing.setBusy(true);
-  const host = new HostSession({ name, avatar, config: checked.config, onState: handleState, onError: handleError });
+  const host = new HostSession({ config: checked.config, onState: handleState, onError: handleError });
   session = host;
   try {
     await host.start();
@@ -95,11 +94,10 @@ async function handleCreate({ name, avatar, config }) {
  * Join an existing table.
  * @param {{name: string, avatar: string, code: string}} data Form data.
  */
-async function handleJoin({ name, avatar, code }) {
-  saveProfile({ playerName: name, avatarUrl: avatar });
+async function handleJoin({ code }) {
   landing.setBusy(true);
   const client = new ClientSession({
-    name, avatar, code, onState: handleState, onError: handleError, onClosed: handleClosed,
+    code, onState: handleState, onError: handleError, onClosed: handleClosed,
   });
   session = client;
   try {

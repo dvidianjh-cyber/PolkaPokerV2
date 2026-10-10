@@ -1,9 +1,10 @@
-// Last Modified: 2026-10-10 (v2.0.0.0)
+// Last Modified: 2026-10-10 (v2.0.0.1)
 import { h, chip, fmt } from './dom.js';
 import { cardElement } from './cards.js';
-import { avatarGlyph } from '../shared/avatars.js';
-import { MSG } from '../net/messages.js';
+import { avatarGlyph, AVATARS, DEFAULT_AVATAR } from '../shared/avatars.js';
+import { MSG, sanitizeName, MAX_NAME_LENGTH } from '../net/messages.js';
 import { MAX_SEATS } from '../engine/blinds.js';
+import { loadProfile, saveProfile } from '../storage/profile.js';
 
 const URGENT_MS = 10000;
 
@@ -39,6 +40,8 @@ export class TableView {
     this.raiseRefs = null;
     this.toastText = '';
     this.toastTimer = null;
+    this.onboardingSeat = null;
+    this.onboardingError = '';
     this.tickTimer = setInterval(this._onTick, 250);
   }
 
@@ -59,6 +62,11 @@ export class TableView {
    * @param {string} message Text.
    */
   toast(message) {
+    if (this.onboardingSeat !== null && message) {
+      this.onboardingError = message;
+      this._render();
+      return;
+    }
     this.toastText = message;
     const el = this.root.querySelector('.toast');
     if (el) {
@@ -120,7 +128,7 @@ export class TableView {
       h('main', { class: 'table-screen' },
         this._buildHeader(),
         this._buildTable(me),
-        h('div', { class: 'player-panel' }, this._buildHand(me), this._buildControls(me)),
+        this.onboardingSeat !== null ? this._buildOnboardingModal() : null,
         h('div', { class: `toast${this.toastText ? ' toast--show' : ''}`, role: 'status', 'aria-live': 'polite', text: this.toastText })));
   }
 
@@ -141,7 +149,7 @@ export class TableView {
       h('div', { class: 'header-actions' },
         h('button', {
           type: 'button', class: 'btn btn-small', id: 'btn-palette', 'aria-pressed': String(this.prefs.fourColour),
-          text: this.prefs.fourColour ? 'Four-colour deck: on' : 'Four-colour deck: off', onClick: this._onTogglePalette,
+          text: this.prefs.fourColour ? '4-colour: on' : '4-colour: off', onClick: this._onTogglePalette,
         }),
         h('button', { type: 'button', class: 'btn btn-small btn-danger', id: 'btn-leave', text: this.isHost ? 'End game' : 'Leave', onClick: this._onLeaveClick })));
   }
@@ -228,8 +236,8 @@ export class TableView {
     else if (player.allIn) status = 'All-in';
     else if (!player.inHand && s.phase !== 'LOBBY' && s.phase !== 'SHOWDOWN') status = 'Next hand';
 
-    return h('div', { class: classes.join(' '), 'aria-label': `${player.name}, ${fmt(player.stack)} chips` },
-      cards ? h('div', { class: 'seat-cards' }, cards) : null,
+    const isMe = player.id === s.youId;
+    const identity = [
       h('div', { class: 'avatar-ring', dataset: { active: String(isTurn), urgent: 'false' }, style: '--pct: 100' },
         h('span', { class: 'avatar', 'aria-hidden': 'true', text: avatarGlyph(player.avatar) }),
         isTurn ? h('span', { class: 'ring-seconds', 'aria-hidden': 'true' }) : null,
@@ -237,7 +245,20 @@ export class TableView {
       h('span', { class: 'seat-name', text: player.name }),
       chip(player.stack, 'chip--stack'),
       status ? h('span', { class: 'seat-status', text: status }) : null,
-      player.bet > 0 ? h('span', { class: 'seat-bet' }, chip(player.bet, 'chip--bet')) : null);
+      player.bet > 0 ? h('span', { class: 'seat-bet' }, chip(player.bet, 'chip--bet')) : null,
+    ];
+    const label = `${player.name}, ${fmt(player.stack)} chips`;
+    if (isMe) {
+      classes.push('seat--hero');
+      return h('div', { class: classes.join(' '), 'aria-label': label },
+        h('div', { class: 'hero-main' },
+          h('div', { class: 'hero-id' }, identity),
+          this._buildHand(player)),
+        this._buildControls(player));
+    }
+    return h('div', { class: classes.join(' '), 'aria-label': label },
+      cards ? h('div', { class: 'seat-cards' }, cards) : null,
+      identity);
   }
 
   /**
@@ -247,8 +268,69 @@ export class TableView {
    */
   _makeSitHandler(seat) {
     return function onSitClick() {
-      this.session.send(MSG.SIT, { seat });
+      this.onboardingSeat = seat;
+      this.onboardingError = '';
+      this._render();
     }.bind(this);
+  }
+
+  /** Build the seat claiming modal. @returns {HTMLElement} Modal. */
+  _buildOnboardingModal() {
+    const profile = loadProfile() || {};
+    let avatar = profile.avatarUrl || DEFAULT_AVATAR;
+
+    const nameInput = h('input', {
+      type: 'text', maxlength: MAX_NAME_LENGTH, autocomplete: 'nickname',
+      value: profile.playerName || '', placeholder: 'Your name', required: true,
+    });
+    const errorBox = h('p', { class: 'form-error', role: 'alert', text: this.onboardingError });
+    const avatarButtons = [];
+
+    const selectAvatar = (token) => {
+      avatar = token;
+      for (const btn of avatarButtons) btn.setAttribute('aria-checked', String(btn.dataset.avatar === token));
+    };
+
+    for (const a of AVATARS) {
+      const token = `emoji:${a.id}`;
+      avatarButtons.push(h('button', {
+        type: 'button', class: 'avatar-option', role: 'radio', 'aria-label': a.id,
+        'aria-checked': String(token === avatar), dataset: { avatar: token }, text: a.glyph,
+        onClick: (e) => selectAvatar(e.currentTarget.dataset.avatar),
+      }));
+    }
+
+    const onSubmit = (event) => {
+      event.preventDefault();
+      const name = sanitizeName(nameInput.value);
+      if (!name) {
+        this.onboardingError = 'Please enter a name first.';
+        this._render();
+        return;
+      }
+      saveProfile({ playerName: name, avatarUrl: avatar });
+      this.session.send(MSG.JOIN, { name, avatar });
+      this.session.send(MSG.SIT, { seat: this.onboardingSeat });
+      this.onboardingSeat = null;
+    };
+
+    const onCancel = () => {
+      this.onboardingSeat = null;
+      this._render();
+    };
+
+    return h('div', { class: 'modal-overlay' },
+      h('form', { class: 'panel modal-content', onSubmit },
+        h('h2', { text: `Claim Seat ${this.onboardingSeat + 1}` }),
+        h('label', { text: 'Name (max 12 characters)' }), nameInput,
+        h('div', { class: 'avatar-picker', role: 'radiogroup', 'aria-label': 'Choose an avatar' }, avatarButtons),
+        errorBox,
+        h('div', { class: 'landing-actions' },
+          h('button', { type: 'button', class: 'btn btn-small', text: 'Cancel', onClick: onCancel }),
+          h('button', { type: 'submit', class: 'btn btn-primary', text: 'Join Seat' })
+        )
+      )
+    );
   }
 
   /** @returns {HTMLElement} Centre of the table: pot, board and status. */
@@ -289,6 +371,7 @@ export class TableView {
     if (s.gameOver) {
       lines.push(h('p', { class: 'result-line result-final', text: s.gameOver === 'none' ? 'Game over' : `Game over: ${this._nameOf(s.gameOver)} wins the table!` }));
     }
+    if (!this._me() && !s.gameOver) lines.push(h('p', { class: 'result-side', text: 'You are watching. Take an empty seat to play.' }));
 
     let action = null;
     if (s.canDeal) {
@@ -305,13 +388,12 @@ export class TableView {
   };
 
   /**
-   * Build the local player's oversized hole cards.
-   * @param {object|null} me Local player.
-   * @returns {HTMLElement} Hand panel.
+   * Build the local player's oversized hole cards (rendered beside their avatar).
+   * @param {object} me Local player.
+   * @returns {HTMLElement} Hand container.
    */
   _buildHand(me) {
     const s = this.state;
-    if (!me) return h('div', { class: 'my-hand my-hand--note', text: 'You are watching. Take an empty seat to play.' });
     if (me.hole && me.inHand) {
       return h('div', { class: `my-hand${me.folded ? ' my-hand--folded' : ''}`, role: 'group', 'aria-label': 'Your hole cards' },
         me.hole.map((c) => cardElement(c, { fourColour: this.prefs.fourColour, size: 'hand' })),
@@ -322,13 +404,14 @@ export class TableView {
   }
 
   /**
-   * Build action controls for the local player's turn.
-   * @param {object|null} me Local player.
+   * Build action controls for the local player's turn: Fold / Call or Check /
+   * Raise, with the raise sizing panel opened in place of the buttons.
+   * @param {object} me Local player.
    * @returns {HTMLElement|null} Controls, or null when it is not their turn.
    */
   _buildControls(me) {
     const s = this.state;
-    if (!me || s.toActId !== s.youId) return null;
+    if (s.toActId !== s.youId) return null;
     const toCall = s.currentBet - me.bet;
     const maxTo = me.bet + me.stack;
     const minTo = Math.min(s.currentBet + s.minRaise, maxTo);
@@ -338,33 +421,66 @@ export class TableView {
     if (key !== this.raiseKey || this.raiseTo === null) {
       this.raiseKey = key;
       this.raiseTo = minTo;
+      this.raiseOpen = false;
     }
     this.raiseTo = Math.min(maxTo, Math.max(minTo, this.raiseTo));
 
+    if (canRaise && this.raiseOpen) return this._buildRaisePanel(s, me, { toCall, minTo, maxTo });
+
+    const raiseLabel = minTo >= maxTo ? `All-in ${fmt(maxTo)}` : s.currentBet === 0 ? 'Bet' : 'Raise';
     const buttons = [
       h('button', { type: 'button', class: 'btn btn-fold', id: 'btn-fold', text: 'Fold', onClick: this._onFold }),
       toCall > 0
-        ? h('button', { type: 'button', class: 'btn btn-call', id: 'btn-call', text: toCall >= me.stack ? `Call all-in ${fmt(me.stack)}` : `Call ${fmt(toCall)}`, onClick: this._onCall })
+        ? h('button', { type: 'button', class: 'btn btn-call', id: 'btn-call', text: toCall >= me.stack ? `All-in ${fmt(me.stack)}` : `Call ${fmt(toCall)}`, onClick: this._onCall })
         : h('button', { type: 'button', class: 'btn btn-call', id: 'btn-check', text: 'Check', onClick: this._onCheck }),
     ];
-    let raisePanel = null;
     if (canRaise) {
-      const slider = h('input', { type: 'range', id: 'raise-slider', min: minTo, max: maxTo, step: 1, value: this.raiseTo, 'aria-label': 'Raise amount', onInput: this._onRaiseInput });
-      const number = h('input', { type: 'number', id: 'raise-number', min: minTo, max: maxTo, step: 1, value: this.raiseTo, inputmode: 'numeric', 'aria-label': 'Raise to', onChange: this._onRaiseInput });
-      const confirm = h('button', { type: 'button', class: 'btn btn-raise', id: 'btn-raise', onClick: this._onRaise });
-      this.raiseRefs = { slider, number, confirm, minTo, maxTo, currentBet: s.currentBet };
-      const potSize = s.currentBet + s.pot + toCall;
-      const halfPot = s.currentBet + Math.floor((s.pot + toCall) / 2);
-      raisePanel = h('div', { class: 'raise-panel' },
-        h('div', { class: 'raise-row' }, slider, number),
-        h('div', { class: 'raise-quick' },
-          this._quickButton('Min', minTo), this._quickButton('\u00BD Pot', halfPot),
-          this._quickButton('Pot', potSize), this._quickButton('All-in', maxTo)),
-        confirm);
-      this._syncRaise();
+      this.raiseRefs = { minTo, maxTo, currentBet: s.currentBet };
+      buttons.push(h('button', {
+        type: 'button', class: 'btn btn-raise', id: 'btn-raise-open', text: raiseLabel,
+        onClick: minTo >= maxTo ? this._onRaise : this._onRaiseOpen,
+      }));
     }
-    return h('div', { class: 'controls', role: 'group', 'aria-label': 'Your actions' }, h('div', { class: 'controls-main' }, buttons), raisePanel);
+    return h('div', { class: 'controls', role: 'group', 'aria-label': 'Your actions' }, h('div', { class: 'controls-main' }, buttons));
   }
+
+  /**
+   * Build the raise sizing panel.
+   * @param {object} s State.
+   * @param {object} me Local player.
+   * @param {{toCall: number, minTo: number, maxTo: number}} range Sizing bounds.
+   * @returns {HTMLElement} Controls element.
+   */
+  _buildRaisePanel(s, me, { toCall, minTo, maxTo }) {
+    const slider = h('input', { type: 'range', id: 'raise-slider', min: minTo, max: maxTo, step: 1, value: this.raiseTo, 'aria-label': 'Raise amount', onInput: this._onRaiseInput });
+    const number = h('input', { type: 'number', id: 'raise-number', min: minTo, max: maxTo, step: 1, value: this.raiseTo, inputmode: 'numeric', 'aria-label': 'Raise to', onChange: this._onRaiseInput });
+    const confirm = h('button', { type: 'button', class: 'btn btn-raise', id: 'btn-raise', onClick: this._onRaise });
+    this.raiseRefs = { slider, number, confirm, minTo, maxTo, currentBet: s.currentBet };
+    const potSize = s.currentBet + s.pot + toCall;
+    const halfPot = s.currentBet + Math.floor((s.pot + toCall) / 2);
+    const panel = h('div', { class: 'raise-panel' },
+      h('div', { class: 'raise-row' }, slider, number),
+      h('div', { class: 'raise-quick' },
+        this._quickButton('Min', minTo), this._quickButton('\u00BD Pot', halfPot),
+        this._quickButton('Pot', potSize), this._quickButton('All-in', maxTo)),
+      h('div', { class: 'raise-confirm' },
+        h('button', { type: 'button', class: 'btn btn-small', id: 'btn-raise-cancel', text: 'Back', onClick: this._onRaiseCancel }),
+        confirm));
+    this._syncRaise();
+    return h('div', { class: 'controls', role: 'group', 'aria-label': 'Raise sizing' }, panel);
+  }
+
+  /** Open the raise sizing panel. */
+  _onRaiseOpen = () => {
+    this.raiseOpen = true;
+    this._render();
+  };
+
+  /** Close the raise sizing panel without acting. */
+  _onRaiseCancel = () => {
+    this.raiseOpen = false;
+    this._render();
+  };
 
   /**
    * Build a quick-size button.
@@ -389,6 +505,7 @@ export class TableView {
   _onRaise = () => {
     const refs = this.raiseRefs;
     if (!refs) return;
+    this.raiseOpen = false;
     if (this.raiseTo >= refs.maxTo) this.session.send(MSG.PLAYER_ACTION, { action: 'ALL_IN' });
     else this.session.send(MSG.PLAYER_ACTION, { action: 'RAISE', amount: this.raiseTo });
   };

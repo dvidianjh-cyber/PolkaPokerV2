@@ -47,11 +47,11 @@ export class HostSession {
    * @param {(state: object) => void} options.onState Called with the host's view on every change.
    * @param {(message: string) => void} options.onError Called with non-fatal errors.
    */
-  constructor({ name, avatar, config, onState, onError }) {
+  constructor({ config, onState, onError }) {
     this.myId = HOST_ID;
     this.code = null;
     this.game = new Game(config, HOST_ID);
-    this.profiles = new Map([[HOST_ID, { name, avatar }]]);
+    this.profiles = new Map();
     this.conns = new Map();
     this.onState = onState;
     this.onError = onError;
@@ -60,7 +60,6 @@ export class HostSession {
     this.timerKey = null;
     this.deadline = null;
     this.closed = false;
-    this.game.sit(HOST_ID, name, avatar, 0);
   }
 
   /**
@@ -127,7 +126,7 @@ export class HostSession {
     const { type, payload } = parsed;
     let result = { ok: true };
     if (type === MSG.JOIN) {
-      if (id !== HOST_ID && this.game.seatOf(id) < 0) this.profiles.set(id, payload);
+      if (this.game.seatOf(id) < 0) this.profiles.set(id, payload);
     } else {
       const profile = this.profiles.get(id);
       if (!profile) {
@@ -170,6 +169,7 @@ export class HostSession {
     const id = conn.peer;
     const onOpen = () => {
       this.conns.set(id, conn);
+      this._broadcast();
     };
     const onData = (data) => this.receive(id, data);
     const onClose = () => this._onDisconnect(id);

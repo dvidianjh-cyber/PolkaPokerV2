@@ -4,6 +4,23 @@
 
 Versioning is four-part: `v2.0.0.0`, then `v2.0.0.1`, ... for patches and features.
 
+## v2.0.0.2 - 2026-10-10
+
+### Changed
+- **Spectator Mode:** Removed Name and Avatar requirements from the landing page. Users join or create tables as spectators first.
+- **Modal Onboarding:** Clicking an empty "Sit Here" seat opens a centered modal to capture Name and Avatar, avoiding up-front friction. Race conditions are handled gracefully by the Host catching duplicate seat requests.
+- **Dynamic Chip Stacks:** Replaced flat pill chip graphics with visual stacked chips capped at a max stack height. The chip stacks fit securely within the responsive CSS grid layout.
+
+## v2.0.0.1 - 2026-10-10
+
+### Changed
+- **In-table player UI:** the local player's hole cards and action buttons (Fold, Call/Check, Raise) now render inside the table grid, in the local seat next to the avatar, instead of in a panel below the table.
+- **No vertical scrolling:** `html`/`body` are locked to the viewport and the table screen is a `100dvh` flex column; the grid rows (`auto / 1fr / auto`) and the card, avatar and chip sizes are bounded by both viewport width and height so the table fits without a scrollbar. Only the landing form may scroll inside `#app` on very short screens.
+- Raise sizing (slider, number box, Min / half-pot / Pot / All-in) opens in place of the action buttons via **Raise** and closes with **Back**, keeping the local seat compact.
+- Mobile (up to 720px) uses a 4-column grid with the local seat spanning the full bottom row; header compacted. The 4-colour toggle label is shortened.
+- The toast is `position: fixed` so it never takes layout space.
+- Layout uses CSS Grid/Flexbox only; the UI changes are confined to `src/ui` and `src/styles` and do not touch networking or engine code.
+
 ## v2.0.0.0 - 2026-10-10
 
 Initial release of Polka Poker v2.

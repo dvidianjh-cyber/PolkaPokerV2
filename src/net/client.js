@@ -19,9 +19,7 @@ export class ClientSession {
    * @param {(message: string) => void} options.onError Called for non-fatal errors.
    * @param {(reason: string) => void} options.onClosed Called when the game ends.
    */
-  constructor({ name, avatar, code, onState, onError, onClosed }) {
-    this.name = name;
-    this.avatar = avatar;
+  constructor({ code, onState, onError, onClosed }) {
     this.code = code;
     this.onState = onState;
     this.onError = onError;
@@ -55,7 +53,7 @@ export class ClientSession {
       const onPeerOpen = () => {
         const conn = peer.connect(PEER_PREFIX + this.code, { reliable: true });
         this.conn = conn;
-        const onConnOpen = () => this.send(MSG.JOIN, { name: this.name, avatar: this.avatar });
+        const onConnOpen = () => {};
         const onData = (data) => {
           if (!data || typeof data !== 'object') return;
           if (data.type === MSG.STATE_UPDATE && data.payload) {

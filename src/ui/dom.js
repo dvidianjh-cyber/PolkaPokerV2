@@ -55,5 +55,13 @@ export function fmt(value) {
  */
 export function chip(value, extraClass = '') {
   const tier = Math.min(4, Math.max(0, String(Math.max(1, Math.floor(value))).length - 1));
-  return h('span', { class: `chip chip--${tier} ${extraClass}`.trim() }, h('span', { class: 'chip-value', text: fmt(value) }));
+  const numChips = Math.min(10, Math.max(1, Math.ceil(Math.log10(value + 1) * 2)));
+  const visualChips = [];
+  for (let i = 0; i < numChips; i++) {
+    visualChips.push(h('span', { class: `chip-graphic chip--${tier}`, style: `bottom: ${i * 3}px; z-index: ${i};` }));
+  }
+  return h('span', { class: `chip-stack ${extraClass}`.trim() },
+    h('span', { class: 'chip-visuals' }, visualChips),
+    h('span', { class: 'chip-value', text: fmt(value) })
+  );
 }
