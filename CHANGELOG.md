@@ -4,6 +4,11 @@
 
 Versioning is four-part: `v2.0.0.0`, then `v2.0.0.1`, ... for patches and features.
 
+## v2.0.0.3 - 2026-10-18
+
+### Fixed
+- **GitHub Pages deployment:** Pages was serving the unbuilt source `index.html`, so `/src/...` assets 404'd and the bare `peerjs` import could not resolve. Added `.github/workflows/deploy.yml`, which runs tests, builds with Vite and publishes `dist/` to Pages on every push to `main`.
+
 ## v2.0.0.2 - 2026-10-10
 
 ### Changed
